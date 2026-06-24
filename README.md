@@ -25,9 +25,10 @@ AI Billing is intended for people who want to understand:
 
 - Status bar summary for quick visibility
 - Dashboard with 5-hour, 7-day, and all-time views
-- Per-model cost breakdown
+- Per-model cost breakdown with auto/explicit routing split
+- Per-vendor (provider) cost breakdown and comparison
 - GitHub-style model comparison view
-- Auto, explicit, and unclassified routing split where available
+- Discount tracking per vendor
 - Local rebuild and resync commands for re-importing history
 - Debug View import support for deeper reconciliation work
 
@@ -67,7 +68,8 @@ The main setting surface is `aiBilling.modelPricing`, which allows model-specifi
 
 This README is the repository entry point. Use the documents below for detailed guidance.
 
--
+- Architecture overview: [architecture/overview.md](architecture/overview.md)
+- Architecture decision Index: [adr/index.md](adr/index.md)
 
 ## Anatomy of Project
 
@@ -85,7 +87,6 @@ This README is the repository entry point. Use the documents below for detailed 
 
 - The extension is local-first and does not require a back-end service.
 - It reads local VS Code artefacts but does not modify the original chat history files.
-- Some billing and routing signals depend on what VS Code persisted locally, so historical comparisons may include an unclassified portion.
 
 ## Contact
 

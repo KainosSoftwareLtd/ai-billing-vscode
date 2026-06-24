@@ -1,0 +1,144 @@
+{
+  "name": "ai-billing",
+  "displayName": "AI Billing",
+  "description": "Standalone AI usage and billing dashboard for VS Code Chat and model calls.",
+  "version": "1.0.0",
+  "author": "Kainos [Damiano Curreri]",
+  "publisher": "kainos-damiano-curreri",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KainosSoftwareLtd/ai-billing-vscode.git"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./ && node -e \"require('fs').copyFileSync('src/pricing.json','out/pricing.json')\"",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile && vsce package --allow-missing-repository",
+    "package:patch": "npm version patch --no-git-tag-version && npm run package",
+    "package:minor": "npm version minor --no-git-tag-version && npm run package",
+    "package:major": "npm version major --no-git-tag-version && npm run package",
+    "publish": "npm run compile && vsce publish --allow-missing-repository",
+    "publish:patch": "npm version patch --no-git-tag-version && npm run publish",
+    "publish:minor": "npm version minor --no-git-tag-version && npm run publish",
+    "publish:major": "npm version major --no-git-tag-version && npm run publish"
+  },
+  "engines": {
+    "vscode": "^1.95.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Other",
+    "AI"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiBilling.showUsage",
+        "title": "AI Billing: Show Usage",
+        "category": "AI Billing"
+      },
+      {
+        "command": "aiBilling.syncChatUsage",
+        "title": "AI Billing: Sync VS Code Chat Usage",
+        "category": "AI Billing"
+      },
+      {
+        "command": "aiBilling.showDiagnosticsOutput",
+        "title": "AI Billing: Show Diagnostics Output",
+        "category": "AI Billing"
+      },
+      {
+        "command": "aiBilling.importDebugViewFromClipboard",
+        "title": "AI Billing: Import Debug View From Clipboard",
+        "category": "AI Billing"
+      },
+      {
+        "command": "aiBilling.clearUsage",
+        "title": "AI Billing: Clear Usage",
+        "category": "AI Billing"
+      },
+      {
+        "command": "aiBilling.rebuildUsage",
+        "title": "AI Billing: Rebuild Usage from Copilot History",
+        "category": "AI Billing"
+      }
+    ],
+    "configuration": {
+      "title": "AI Billing",
+      "properties": {
+        "aiBilling.copilot.billing.monthlyIncludedRequests": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Monthly included AI credits before overage is billed. This legacy setting name is retained for compatibility. Set to 0 to bill all token-derived credits."
+        },
+        "aiBilling.copilot.billing.overageUsdPerRequest": {
+          "type": "number",
+          "default": 0.01,
+          "minimum": 0,
+          "markdownDescription": "USD billed per AI credit. This legacy setting name is retained for compatibility with earlier releases."
+        },
+        "aiBilling.copilot.billing.requestUnitWeights": {
+          "type": "object",
+          "default": {
+            "*": 1
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          },
+          "markdownDescription": "**Deprecated**: Legacy request-unit configuration kept only for compatibility with older stored data. Token-derived billing no longer uses this setting."
+        },
+        "aiBilling.modelPricing": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "in": {
+                "type": "number",
+                "minimum": 0
+              },
+              "out": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cachedIn": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cacheWrite": {
+                "type": "number",
+                "minimum": 0
+              },
+              "requestUnits": {
+                "type": "number",
+                "minimum": 0,
+                "default": 1
+              }
+            }
+          },
+          "markdownDescription": "Custom per-model pricing in USD per million tokens. Keys are model names. Values support `in`, `out` (required), plus `cachedIn` and `cacheWrite` when needed. `requestUnits` is deprecated and ignored by token-derived billing. Example: `{\"gpt-4o\": {\"in\": 2.5, \"out\": 10}, \"o1\": {\"in\": 5, \"out\": 40}}`"
+        },
+        "aiBilling.diagnostics.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable verbose AI Billing diagnostics in the Extension Host logs (especially chat import sync lifecycle and source matching)."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.7.0",
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.95.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {}
+}
