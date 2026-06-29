@@ -25,6 +25,8 @@ export interface UsageRecord {
   isAutoModel?: boolean;
   // detail: applied discount percentage for this record
   appliedDiscountPercent?: number;
+  // Stable caller-provided fingerprint for idempotent ingestion.
+  dedupeKey?: string;
 }
 
 export interface RawUsage {
@@ -78,6 +80,7 @@ export interface RecordUsageArgs {
   requestUnits?: number;
   ts?: number;
   isAutoModel?: boolean;
+  dedupeKey?: string;
 }
 
 // Pricing loaded from configuration (per million tokens)
@@ -459,7 +462,7 @@ function forecastCostForRecord(r: UsageRecord, trendMultiplier = 1): number {
   return Math.max(0, actualCostForRecord(r) * trendMultiplier);
 }
 
-export async function recordUsage(args: RecordUsageArgs): Promise<void> {
+export async function recordUsage(args: RecordUsageArgs): Promise<boolean> {
   const usage = args.usage ?? {};
   const u = {
     input: usage.input_tokens ?? 0,
@@ -471,6 +474,12 @@ export async function recordUsage(args: RecordUsageArgs): Promise<void> {
   const provider = args.provider ?? inferProvider(args.model);
   const all = records();
   const now = args.ts ?? Date.now();
+  const dedupeKey = typeof args.dedupeKey === 'string' ? args.dedupeKey.trim() : '';
+
+  if (dedupeKey && all.some((record) => record.dedupeKey === dedupeKey)) {
+    console.log(`[AI Billing] Skipping duplicate record for dedupeKey=${dedupeKey}`);
+    return false;
+  }
 
   const costUsd = typeof args.explicitCostUsd === 'number' ? args.explicitCostUsd : costOf(args.model, u);
   const hasExplicitRequestUnits =
@@ -488,10 +497,21 @@ export async function recordUsage(args: RecordUsageArgs): Promise<void> {
     );
   }
 
-  const rec: UsageRecord = { ts: now, provider, model: args.model, ...u, requestUnits, costUsd, costForecastUsd, isAutoModel: args.isAutoModel };
+  const rec: UsageRecord = {
+    ts: now,
+    provider,
+    model: args.model,
+    ...u,
+    requestUnits,
+    costUsd,
+    costForecastUsd,
+    isAutoModel: args.isAutoModel,
+    dedupeKey: dedupeKey || undefined,
+  };
   all.push(rec);
   await store?.update(KEY, all.slice(-MAX_RECORDS));
   onChange?.();
+  return true;
 }
 
 export async function clearUsage(): Promise<void> {
@@ -508,6 +528,19 @@ export interface Totals {
   requestUnits: number;
   cost: number;
   costForecast: number;
+}
+
+export interface BillingPeriodRange {
+  start: number;
+  endExclusive: number;
+  startDay: number;
+}
+
+export interface BillingCycleSummary {
+  start: number;
+  endExclusive: number;
+  isCurrent: boolean;
+  totals: Totals;
 }
 
 export function totals(recs: UsageRecord[] = records()): Totals {
@@ -548,6 +581,133 @@ export function windowAutoModelTotals(ms: number): Totals {
 export function windowExplicitModelTotals(ms: number): Totals {
   const since = Date.now() - ms;
   return explicitModelTotals(records().filter((r) => r.ts >= since));
+}
+
+interface BillingAnchor {
+  startDay: number;
+  licenseStartTs?: number;
+}
+
+function parseLicenseStartTs(raw: string | undefined): number | undefined {
+  if (!raw) {
+    return undefined;
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+  if (!match) {
+    return undefined;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const d = new Date(year, month - 1, day, 0, 0, 0, 0);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) {
+    return undefined;
+  }
+  return d.getTime();
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function billingMonthStart(year: number, month: number, preferredDay: number): number {
+  const day = Math.max(1, Math.min(preferredDay, daysInMonth(year, month)));
+  return new Date(year, month, day, 0, 0, 0, 0).getTime();
+}
+
+function nextBillingMonthStart(startTs: number, preferredDay: number): number {
+  const d = new Date(startTs);
+  return billingMonthStart(d.getFullYear(), d.getMonth() + 1, preferredDay);
+}
+
+function resolveBillingAnchor(): BillingAnchor {
+  const licenseStartTs = parseLicenseStartTs(Config.billingLicenseStart());
+  if (typeof licenseStartTs === 'number') {
+    const d = new Date(licenseStartTs);
+    return {
+      startDay: d.getDate(),
+      licenseStartTs,
+    };
+  }
+
+  return {
+    startDay: Config.billingPeriodStartDay(),
+  };
+}
+
+function billingRangeContaining(ts: number, anchor: BillingAnchor): BillingPeriodRange {
+  const d = new Date(ts);
+  let start = billingMonthStart(d.getFullYear(), d.getMonth(), anchor.startDay);
+  if (ts < start) {
+    start = billingMonthStart(d.getFullYear(), d.getMonth() - 1, anchor.startDay);
+  }
+
+  if (typeof anchor.licenseStartTs === 'number' && start < anchor.licenseStartTs) {
+    start = anchor.licenseStartTs;
+  }
+
+  let endExclusive = nextBillingMonthStart(start, anchor.startDay);
+  if (endExclusive <= start) {
+    endExclusive = start + 24 * 60 * 60 * 1000;
+  }
+
+  return {
+    start,
+    endExclusive,
+    startDay: anchor.startDay,
+  };
+}
+
+export function currentBillingPeriodRange(now: Date = new Date()): BillingPeriodRange {
+  return billingRangeContaining(now.getTime(), resolveBillingAnchor());
+}
+
+export function billingPeriodTotals(recs: UsageRecord[] = records(), now: Date = new Date()): Totals {
+  const range = currentBillingPeriodRange(now);
+  return totals(recs.filter((r) => r.ts >= range.start && r.ts < range.endExclusive));
+}
+
+export function billingCycleSummaries(
+  limit = 12,
+  recs: UsageRecord[] = records(),
+  now: Date = new Date(),
+): BillingCycleSummary[] {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 12;
+  const anchor = resolveBillingAnchor();
+  const nowTs = now.getTime();
+
+  let cursor: number | undefined;
+  if (typeof anchor.licenseStartTs === 'number') {
+    cursor = anchor.licenseStartTs;
+  } else if (recs.length > 0) {
+    const firstRecordTs = Math.min(...recs.map((r) => r.ts));
+    cursor = billingRangeContaining(firstRecordTs, anchor).start;
+  }
+
+  if (typeof cursor !== 'number') {
+    return [];
+  }
+
+  const rows: BillingCycleSummary[] = [];
+  for (let guard = 0; guard < 240 && cursor <= nowTs; guard++) {
+    const period = billingRangeContaining(cursor, anchor);
+    const periodTotals = totals(recs.filter((r) => r.ts >= period.start && r.ts < period.endExclusive));
+    rows.push({
+      start: period.start,
+      endExclusive: period.endExclusive,
+      isCurrent: nowTs >= period.start && nowTs < period.endExclusive,
+      totals: periodTotals,
+    });
+
+    if (period.endExclusive <= cursor) {
+      break;
+    }
+    cursor = period.endExclusive;
+  }
+
+  return rows.slice(-safeLimit).reverse();
 }
 
 export interface DayBucket {

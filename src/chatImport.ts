@@ -45,6 +45,37 @@ interface RequestLogEntry {
   model: string;
 }
 
+function numericKeyPart(value: number | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'undef';
+  }
+  return value.toFixed(9).replace(/\.?0+$/, '');
+}
+
+function createSyncTurnDedupeKey(args: {
+  ts: number;
+  modelName: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  requestUnits?: number;
+  isAutoModel?: boolean;
+}): string {
+  const model = normaliseModelName(args.modelName).toLowerCase();
+  return [
+    'copilot-sync',
+    String(args.ts),
+    model,
+    String(args.inputTokens),
+    String(args.outputTokens),
+    String(args.cacheReadTokens),
+    String(args.cacheWriteTokens),
+    numericKeyPart(args.requestUnits),
+    args.isAutoModel === true ? 'auto' : 'explicit',
+  ].join('|');
+}
+
 export interface ChatImportStats {
   importedFromDebugView: number;
   importedFromDebugLogs: number;
@@ -330,7 +361,8 @@ async function doSyncChatUsage(syncId: string): Promise<void> {
     const cacheReadTokens = debugUsage?.cacheReadTokens ?? turn.cacheReadTokens ?? 0;
     const cacheWriteTokens = debugUsage?.cacheWriteTokens ?? turn.cacheWriteTokens ?? 0;
 
-    await recordUsage({
+    const requestUnits = debugUsage?.aiCredits ?? turn.aiCredits;
+    const inserted = await recordUsage({
       model: `copilot:${modelName}`,
       usage: {
         input_tokens: inputTokens,
@@ -339,10 +371,25 @@ async function doSyncChatUsage(syncId: string): Promise<void> {
         cache_read_input_tokens: cacheReadTokens,
       },
       provider: 'copilot',
-      requestUnits: debugUsage?.aiCredits ?? turn.aiCredits,
+      requestUnits,
       ts: turn.ts,
       isAutoModel: debugUsage?.isAutoModel,
+      dedupeKey: createSyncTurnDedupeKey({
+        ts: turn.ts,
+        modelName,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        requestUnits,
+        isAutoModel: debugUsage?.isAutoModel,
+      }),
     });
+
+    if (!inserted) {
+      importedIds.add(turn.id);
+      continue;
+    }
 
     if (turn.id.includes(':debug:')) {
       importedFromDebugView += 1;
@@ -872,8 +919,17 @@ async function parseTranscriptTurns(filePath: string): Promise<TranscriptTurn[]>
     if (parsed?.type === 'assistant.message' && pendingUser) {
       const content = String(parsed?.data?.content ?? '').trim();
       const assistantMessageId = String(parsed?.data?.messageId ?? parsed?.id ?? `${filePath}:${timestamp}:assistant`);
-      turns.push(...extractDebugUsageTurnsFromText(content, timestamp, assistantMessageId));
+      const debugTurns = extractDebugUsageTurnsFromText(content, timestamp, assistantMessageId);
+      turns.push(...debugTurns);
       if (!content) {
+        continue;
+      }
+
+      // When debug usage blocks are present in the assistant payload, those entries
+      // are the authoritative billing records. Skip creating the generic assistant
+      // turn to avoid counting the same response twice.
+      if (debugTurns.length > 0) {
+        pendingUser = undefined;
         continue;
       }
 

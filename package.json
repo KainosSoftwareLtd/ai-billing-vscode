@@ -2,7 +2,7 @@
   "name": "ai-billing",
   "displayName": "AI Billing",
   "description": "Standalone AI usage and billing dashboard for VS Code Chat and model calls.",
-  "version": "1.0.0",
+  "version": "1.0.7",
   "author": "Kainos [Damiano Curreri]",
   "publisher": "kainos-damiano-curreri",
   "license": "MIT",
@@ -125,6 +125,19 @@
             }
           },
           "markdownDescription": "Custom per-model pricing in USD per million tokens. Keys are model names. Values support `in`, `out` (required), plus `cachedIn` and `cacheWrite` when needed. `requestUnits` is deprecated and ignored by token-derived billing. Example: `{\"gpt-4o\": {\"in\": 2.5, \"out\": 10}, \"o1\": {\"in\": 5, \"out\": 40}}`"
+        },
+        "aiBilling.billing.periodStartDay": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 28,
+          "markdownDescription": "Day of month when the billing period starts. Example: 1 = calendar month, 5 = each period runs from the 5th to the 4th."
+        },
+        "aiBilling.billing.licenseStart": {
+          "type": "string",
+          "default": "",
+          "pattern": "^$|^\\d{4}-\\d{2}-\\d{2}$",
+          "markdownDescription": "Optional license anchor date in YYYY-MM-DD format. When set, billing periods are aligned to this date and monthly summaries start from this anchor."
         },
         "aiBilling.diagnostics.enabled": {
           "type": "boolean",

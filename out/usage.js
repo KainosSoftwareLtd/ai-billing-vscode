@@ -45,6 +45,9 @@ exports.explicitModelTotals = explicitModelTotals;
 exports.windowTotals = windowTotals;
 exports.windowAutoModelTotals = windowAutoModelTotals;
 exports.windowExplicitModelTotals = windowExplicitModelTotals;
+exports.currentBillingPeriodRange = currentBillingPeriodRange;
+exports.billingPeriodTotals = billingPeriodTotals;
+exports.billingCycleSummaries = billingCycleSummaries;
 exports.dailySeries = dailySeries;
 exports.modelMetrics = modelMetrics;
 exports.modelComparisonMetrics = modelComparisonMetrics;
@@ -354,6 +357,11 @@ async function recordUsage(args) {
     const provider = args.provider ?? inferProvider(args.model);
     const all = records();
     const now = args.ts ?? Date.now();
+    const dedupeKey = typeof args.dedupeKey === 'string' ? args.dedupeKey.trim() : '';
+    if (dedupeKey && all.some((record) => record.dedupeKey === dedupeKey)) {
+        console.log(`[AI Billing] Skipping duplicate record for dedupeKey=${dedupeKey}`);
+        return false;
+    }
     const costUsd = typeof args.explicitCostUsd === 'number' ? args.explicitCostUsd : costOf(args.model, u);
     const hasExplicitRequestUnits = typeof args.requestUnits === 'number' && Number.isFinite(args.requestUnits) && args.requestUnits >= 0;
     const requestUnits = hasExplicitRequestUnits
@@ -365,10 +373,21 @@ async function recordUsage(args) {
     if (requestUnits > 0 || costUsd > 0) {
         console.log(`[AI Billing] Record: model=${args.model}, provider=${provider}, credits=${requestUnits}, costUsd=${costUsd}, costForecastUsd=${costForecastUsd}`);
     }
-    const rec = { ts: now, provider, model: args.model, ...u, requestUnits, costUsd, costForecastUsd, isAutoModel: args.isAutoModel };
+    const rec = {
+        ts: now,
+        provider,
+        model: args.model,
+        ...u,
+        requestUnits,
+        costUsd,
+        costForecastUsd,
+        isAutoModel: args.isAutoModel,
+        dedupeKey: dedupeKey || undefined,
+    };
     all.push(rec);
     await store?.update(KEY, all.slice(-MAX_RECORDS));
     onChange?.();
+    return true;
 }
 async function clearUsage() {
     await store?.update(KEY, []);
@@ -404,6 +423,105 @@ function windowAutoModelTotals(ms) {
 function windowExplicitModelTotals(ms) {
     const since = Date.now() - ms;
     return explicitModelTotals(records().filter((r) => r.ts >= since));
+}
+function parseLicenseStartTs(raw) {
+    if (!raw) {
+        return undefined;
+    }
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+    if (!match) {
+        return undefined;
+    }
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const d = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) {
+        return undefined;
+    }
+    return d.getTime();
+}
+function daysInMonth(year, month) {
+    return new Date(year, month + 1, 0).getDate();
+}
+function billingMonthStart(year, month, preferredDay) {
+    const day = Math.max(1, Math.min(preferredDay, daysInMonth(year, month)));
+    return new Date(year, month, day, 0, 0, 0, 0).getTime();
+}
+function nextBillingMonthStart(startTs, preferredDay) {
+    const d = new Date(startTs);
+    return billingMonthStart(d.getFullYear(), d.getMonth() + 1, preferredDay);
+}
+function resolveBillingAnchor() {
+    const licenseStartTs = parseLicenseStartTs(config_1.Config.billingLicenseStart());
+    if (typeof licenseStartTs === 'number') {
+        const d = new Date(licenseStartTs);
+        return {
+            startDay: d.getDate(),
+            licenseStartTs,
+        };
+    }
+    return {
+        startDay: config_1.Config.billingPeriodStartDay(),
+    };
+}
+function billingRangeContaining(ts, anchor) {
+    const d = new Date(ts);
+    let start = billingMonthStart(d.getFullYear(), d.getMonth(), anchor.startDay);
+    if (ts < start) {
+        start = billingMonthStart(d.getFullYear(), d.getMonth() - 1, anchor.startDay);
+    }
+    if (typeof anchor.licenseStartTs === 'number' && start < anchor.licenseStartTs) {
+        start = anchor.licenseStartTs;
+    }
+    let endExclusive = nextBillingMonthStart(start, anchor.startDay);
+    if (endExclusive <= start) {
+        endExclusive = start + 24 * 60 * 60 * 1000;
+    }
+    return {
+        start,
+        endExclusive,
+        startDay: anchor.startDay,
+    };
+}
+function currentBillingPeriodRange(now = new Date()) {
+    return billingRangeContaining(now.getTime(), resolveBillingAnchor());
+}
+function billingPeriodTotals(recs = records(), now = new Date()) {
+    const range = currentBillingPeriodRange(now);
+    return totals(recs.filter((r) => r.ts >= range.start && r.ts < range.endExclusive));
+}
+function billingCycleSummaries(limit = 12, recs = records(), now = new Date()) {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 12;
+    const anchor = resolveBillingAnchor();
+    const nowTs = now.getTime();
+    let cursor;
+    if (typeof anchor.licenseStartTs === 'number') {
+        cursor = anchor.licenseStartTs;
+    }
+    else if (recs.length > 0) {
+        const firstRecordTs = Math.min(...recs.map((r) => r.ts));
+        cursor = billingRangeContaining(firstRecordTs, anchor).start;
+    }
+    if (typeof cursor !== 'number') {
+        return [];
+    }
+    const rows = [];
+    for (let guard = 0; guard < 240 && cursor <= nowTs; guard++) {
+        const period = billingRangeContaining(cursor, anchor);
+        const periodTotals = totals(recs.filter((r) => r.ts >= period.start && r.ts < period.endExclusive));
+        rows.push({
+            start: period.start,
+            endExclusive: period.endExclusive,
+            isCurrent: nowTs >= period.start && nowTs < period.endExclusive,
+            totals: periodTotals,
+        });
+        if (period.endExclusive <= cursor) {
+            break;
+        }
+        cursor = period.endExclusive;
+    }
+    return rows.slice(-safeLimit).reverse();
 }
 const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function dailySeries(days = 14) {

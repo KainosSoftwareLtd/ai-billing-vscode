@@ -24,9 +24,10 @@ AI Billing is intended for people who want to understand:
 ## Features
 
 - Status bar summary for quick visibility
-- Dashboard with 5-hour, 7-day, and all-time views
+- Dashboard with 5-hour, 7-day, current billing period, and all-time views
 - Per-model cost breakdown with auto/explicit routing split
 - Per-vendor (provider) cost breakdown and comparison
+- Monthly Billing Summary tab for cycle-by-cycle reconciliation
 - GitHub-style model comparison view
 - Discount tracking per vendor
 - Local rebuild and resync commands for re-importing history
@@ -63,6 +64,11 @@ npm run package
 The extension uses the `AI Billing` settings group in VS Code.
 
 The main setting surface is `aiBilling.modelPricing`, which allows model-specific pricing overrides where needed. For working examples and reference payloads, use the linked documents below rather than this README.
+
+Billing period behaviour is controlled by:
+
+- `aiBilling.billing.periodStartDay`: cycle start day when no explicit license anchor is configured
+- `aiBilling.billing.licenseStart`: optional `YYYY-MM-DD` anchor for license-aligned cycles and monthly summary grouping
 
 ## Documentation
 

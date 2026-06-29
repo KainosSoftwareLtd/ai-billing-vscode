@@ -103,12 +103,17 @@ function updateUsageBar() {
     if (!usageBar) {
         return;
     }
-    const t = (0, usage_1.totals)();
+    const periodRange = (0, usage_1.currentBillingPeriodRange)();
+    const t = (0, usage_1.billingPeriodTotals)();
+    const allTime = (0, usage_1.totals)();
     const last7d = (0, usage_1.windowTotals)(7 * 24 * HOUR);
-    usageBar.text = `AI Billing $${t.costForecast.toFixed(2)}`;
+    usageBar.text = `AI Billing $${t.costForecast.toFixed(2)} (cycle) / $${allTime.costForecast.toFixed(2)} (overall)`;
+    const periodStart = new Date(periodRange.start).toLocaleDateString();
+    const periodEnd = new Date(periodRange.endExclusive - 1).toLocaleDateString();
     usageBar.tooltip = [
-        `All time: $${t.costForecast.toFixed(4)} · ${t.calls} calls · ${t.input + t.output} tokens · ${t.requestUnits.toFixed(2)} credits`,
+        `Current billing cycle (${periodStart} - ${periodEnd}): $${t.costForecast.toFixed(4)} · ${t.calls} calls · ${t.input + t.output} tokens · ${t.requestUnits.toFixed(2)} credits`,
         `Last 7 days: $${last7d.costForecast.toFixed(4)} (forecast)`,
+        `All time: $${allTime.costForecast.toFixed(4)} (forecast)`,
         `Credits prefer Copilot-reported usage units when available.`,
     ].join('\n');
     usageBar.show();

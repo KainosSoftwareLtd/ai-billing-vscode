@@ -18,10 +18,31 @@ function diagnosticsEnabled(): boolean {
   return vscode.workspace.getConfiguration('aiBilling').get<boolean>('diagnostics.enabled', false) === true;
 }
 
+function billingPeriodStartDay(): number {
+  const raw = vscode.workspace.getConfiguration('aiBilling').get<unknown>('billing.periodStartDay', 1);
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.min(28, Math.max(1, Math.trunc(value)));
+}
+
+function billingLicenseStart(): string | undefined {
+  const raw = vscode.workspace.getConfiguration('aiBilling').get<unknown>('billing.licenseStart', '');
+  if (typeof raw !== 'string') {
+    return undefined;
+  }
+
+  const value = raw.trim();
+  return value || undefined;
+}
+
 export const Config = {
   includedCredits,
   creditPriceUsd,
   diagnosticsEnabled,
+  billingPeriodStartDay,
+  billingLicenseStart,
   copilotMonthlyIncludedRequests: includedCredits,
   copilotOverageUsdPerRequest: creditPriceUsd,
 

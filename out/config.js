@@ -49,10 +49,28 @@ function creditPriceUsd() {
 function diagnosticsEnabled() {
     return vscode.workspace.getConfiguration('aiBilling').get('diagnostics.enabled', false) === true;
 }
+function billingPeriodStartDay() {
+    const raw = vscode.workspace.getConfiguration('aiBilling').get('billing.periodStartDay', 1);
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+        return 1;
+    }
+    return Math.min(28, Math.max(1, Math.trunc(value)));
+}
+function billingLicenseStart() {
+    const raw = vscode.workspace.getConfiguration('aiBilling').get('billing.licenseStart', '');
+    if (typeof raw !== 'string') {
+        return undefined;
+    }
+    const value = raw.trim();
+    return value || undefined;
+}
 exports.Config = {
     includedCredits,
     creditPriceUsd,
     diagnosticsEnabled,
+    billingPeriodStartDay,
+    billingLicenseStart,
     copilotMonthlyIncludedRequests: includedCredits,
     copilotOverageUsdPerRequest: creditPriceUsd,
     copilotRequestUnitWeights() {

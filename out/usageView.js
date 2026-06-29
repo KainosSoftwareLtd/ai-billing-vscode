@@ -151,11 +151,17 @@ function windowsHtml() {
             `</div>` +
             `</div>`);
     };
+    const billingPeriodRecords = recordsInCurrentBillingPeriod();
     return (`<div class="cards">` +
         cardSplit('Last 5 hours', (0, usage_1.windowAutoModelTotals)(5 * HOUR), (0, usage_1.windowExplicitModelTotals)(5 * HOUR)) +
         cardSplit('Last 7 days', (0, usage_1.windowAutoModelTotals)(7 * 24 * HOUR), (0, usage_1.windowExplicitModelTotals)(7 * 24 * HOUR)) +
+        cardSplit('Current billing period', (0, usage_1.autoModelTotals)(billingPeriodRecords), (0, usage_1.explicitModelTotals)(billingPeriodRecords)) +
         cardSplit('All time', (0, usage_1.autoModelTotals)(), (0, usage_1.explicitModelTotals)()) +
         `</div>`);
+}
+function recordsInCurrentBillingPeriod() {
+    const range = (0, usage_1.currentBillingPeriodRange)();
+    return (0, usage_1.records)().filter((record) => record.ts >= range.start && record.ts < range.endExclusive);
 }
 function totalsTable(t) {
     const creditsLabel = '💳 Credits';
@@ -172,6 +178,40 @@ function totalsTable(t) {
     return rows
         .map(([k, v], i) => `<tr class="${i === rows.length - 1 ? 'grand' : ''}"><td>${k}</td><td>${v}</td></tr>`)
         .join('');
+}
+function monthlyBillingSummaryTable() {
+    const rows = (0, usage_1.billingCycleSummaries)(24);
+    if (!rows.length) {
+        return '<div style="color: var(--vscode-descriptionForeground); font-size: 12px; margin: 8px 0 14px;">No monthly billing periods available yet.</div>';
+    }
+    const header = `<thead>` +
+        `<tr style="border-bottom: 1px solid #444; font-weight: 600; text-align: left; background: var(--vscode-editor-background);">` +
+        `<th style="padding: 8px; text-align: left; width: 24%;">Period</th>` +
+        `<th style="padding: 8px; text-align: left; width: 10%;">Status</th>` +
+        `<th style="padding: 8px; text-align: right; width: 8%;">Calls</th>` +
+        `<th style="padding: 8px; text-align: right; width: 13%;">Tokens</th>` +
+        `<th style="padding: 8px; text-align: right; width: 12%;">Credits</th>` +
+        `<th style="padding: 8px; text-align: right; width: 14%;">Actual</th>` +
+        `<th style="padding: 8px; text-align: right; width: 14%;">Forecast</th>` +
+        `</tr>` +
+        `</thead>`;
+    const body = rows
+        .map((row) => {
+        const start = new Date(row.start).toLocaleDateString();
+        const end = new Date(row.endExclusive - 1).toLocaleDateString();
+        const rowClass = row.isCurrent ? ' style="background: color-mix(in srgb, var(--vscode-editor-background) 78%, #0f6f4f 22%);"' : '';
+        return (`<tr${rowClass}>` +
+            `<td style="padding: 8px; text-align: left;">${start} - ${end}</td>` +
+            `<td style="padding: 8px; text-align: left; color: ${row.isCurrent ? '#0e9' : 'var(--vscode-descriptionForeground)'};">${row.isCurrent ? 'Current' : 'Closed'}</td>` +
+            `<td style="padding: 8px; text-align: right;">${fmtNum(row.totals.calls)}</td>` +
+            `<td style="padding: 8px; text-align: right;">${fmtNum(row.totals.input + row.totals.output)}</td>` +
+            `<td style="padding: 8px; text-align: right; font-weight: 600;">${row.totals.requestUnits.toFixed(2)}</td>` +
+            `<td style="padding: 8px; text-align: right; color: #999;">${fmtUsd(row.totals.cost)}</td>` +
+            `<td style="padding: 8px; text-align: right; font-weight: 600; color: #0e9;">${fmtUsd(row.totals.costForecast)}</td>` +
+            `</tr>`);
+    })
+        .join('');
+    return `<table style="width: 100%; border-collapse: collapse; font-size: 12px;">${header}<tbody>${body}</tbody></table>`;
 }
 function modelMetricsTable() {
     const metrics = (0, usage_1.modelMetrics)();
@@ -223,7 +263,9 @@ function vendorMetricsTable() {
 }
 function usageHtml(webview) {
     const series = (0, usage_1.dailySeries)(14);
-    const t = (0, usage_1.totals)();
+    const t = (0, usage_1.billingPeriodTotals)();
+    const allTime = (0, usage_1.totals)();
+    const periodRange = (0, usage_1.currentBillingPeriodRange)();
     const stats = (0, chatImport_1.getChatImportStats)();
     const forecastMethod = 'Linear regression trend over the last 14 days; forecast excludes discounts.';
     const syncTime = stats.lastSyncAt ? new Date(stats.lastSyncAt).toLocaleTimeString() : 'n/a';
@@ -239,6 +281,7 @@ function usageHtml(webview) {
 <style>
   body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 16px; }
   h1 { font-size: 1.1rem; margin: 0 0 2px; }
+  h2 { margin: 0 0 12px; font-size: 14px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
   .sub { color: var(--vscode-descriptionForeground); font-size: 0.8rem; margin-bottom: 16px; }
   .grid { stroke: var(--vscode-panel-border, #888); stroke-opacity: 0.3; }
   .xlab, .ylab { fill: var(--vscode-descriptionForeground); font-size: 9px; }
@@ -250,6 +293,24 @@ function usageHtml(webview) {
   .line-dot { stroke: var(--vscode-editor-background); stroke-width: 1; }
   .actual-dot { fill: #48c9ff; }
   .forecast-dot { fill: #f8b84e; }
+  .tabs { display: flex; gap: 8px; margin: 4px 0 14px; }
+  .tab-btn {
+    margin-top: 0;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-panel-border, #888);
+    padding: 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .tab-btn.active {
+    border-color: #0e9;
+    color: #0e9;
+    background: color-mix(in srgb, var(--vscode-editor-background) 82%, #0f6f4f 18%);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
   th.sortable { cursor: pointer; user-select: none; }
   th.sortable:hover { background: color-mix(in srgb, var(--vscode-editor-background) 75%, var(--vscode-focusBorder) 25%); }
   th.sortable .sort-indicator { color: var(--vscode-descriptionForeground); font-size: 10px; margin-left: 4px; }
@@ -268,15 +329,22 @@ function usageHtml(webview) {
 </head>
 <body>
   <h1>AI usage</h1>
-  <div class="sub">Workspace usage and token-priced billing. Credits use Copilot-reported usage units when available.</div>
+  <div class="sub">Billing period (${new Date(periodRange.start).toLocaleDateString()} - ${new Date(periodRange.endExclusive - 1).toLocaleDateString()}) and token-priced billing. Credits use Copilot-reported usage units when available.</div>
   <div class="sub" title="${forecastMethod}">Forecast method: linear trend (14d), discount excluded.</div>
   <div class="sub">Last sync (${syncTime}): Debug View ${fmtNum(stats.importedFromDebugView)} · Debug logs ${fmtNum(stats.importedFromDebugLogs)} · Transcript tokens ${fmtNum(stats.importedFromTranscriptTokens)} · Skipped ${fmtNum(stats.skippedNonAuthoritative)}${noNewTurns ? ' · No new turns found' : ''}</div>
-  ${windowsHtml()}
-  ${usageTrendChart(series)}
-  <table>${totalsTable(t)}</table>
-  
-  <section style="margin-top: 24px;">
-    <h2 style="margin: 0 0 12px; font-size: 14px; color: #999; text-transform: uppercase; letter-spacing: 0.5px;">📊 Cost per Model</h2>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab-target="overview">Overview</button>
+    <button class="tab-btn" data-tab-target="monthly">Monthly Billing Summary</button>
+  </div>
+
+  <section id="tab-overview" class="tab-panel active">
+    ${windowsHtml()}
+    ${usageTrendChart(series)}
+    <table>${totalsTable(t)}</table>
+    <div class="sub">All-time total (forecast): ${fmtUsd(allTime.costForecast)}.</div>
+
+    <section style="margin-top: 24px;">
+      <h2>📊 Cost per Model</h2>
     <table id="model-cost-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
       <thead>
         <tr style="border-bottom: 1px solid #444; font-weight: 600; text-align: left; background: var(--vscode-editor-background);">
@@ -292,10 +360,10 @@ function usageHtml(webview) {
       </thead>
       <tbody>${modelMetricsTable()}</tbody>
     </table>
-  </section>
+    </section>
 
-  <section style="margin-top: 24px;">
-    <h2 style="margin: 0 0 12px; font-size: 14px; color: #999; text-transform: uppercase; letter-spacing: 0.5px;">🏭 Cost per Vendor</h2>
+    <section style="margin-top: 24px;">
+      <h2>🏭 Cost per Vendor</h2>
     <div style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 8px;">Aggregated usage by AI provider (Claude, Copilot, Ollama) with auto/explicit split. Forecast excludes discounts.</div>
     <table id="vendor-cost-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
       <thead>
@@ -312,10 +380,42 @@ function usageHtml(webview) {
       </thead>
       <tbody>${vendorMetricsTable()}</tbody>
     </table>
+    </section>
+  </section>
+
+  <section id="tab-monthly" class="tab-panel">
+    <h2>🗓️ Monthly Billing Summary</h2>
+    <div class="sub">Use this view to reconcile each billing cycle against GitHub billing statements. The current cycle remains open until period end.</div>
+    ${monthlyBillingSummaryTable()}
   </section>
 
 <script nonce="${n}">
 (() => {
+  function initTabs() {
+    const buttons = Array.from(document.querySelectorAll('.tab-btn'));
+    const panels = {
+      overview: document.getElementById('tab-overview'),
+      monthly: document.getElementById('tab-monthly'),
+    };
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.getAttribute('data-tab-target');
+        if (!target || !Object.prototype.hasOwnProperty.call(panels, target)) {
+          return;
+        }
+
+        buttons.forEach((b) => b.classList.toggle('active', b === button));
+        Object.entries(panels).forEach(([name, panel]) => {
+          if (!panel) {
+            return;
+          }
+          panel.classList.toggle('active', name === target);
+        });
+      });
+    });
+  }
+
   function initSortableTable(tableId, defaultCol, defaultDir) {
     const table = document.getElementById(tableId);
     if (!table) return;
@@ -381,6 +481,7 @@ function usageHtml(webview) {
     sortBy(defaultCol, defaultType, defaultDir);
   }
 
+  initTabs();
   initSortableTable('model-cost-table', 7, 'desc');
   initSortableTable('vendor-cost-table', 6, 'desc');
 })();
