@@ -139,6 +139,11 @@
           "pattern": "^$|^\\d{4}-\\d{2}-\\d{2}$",
           "markdownDescription": "Optional license anchor date in YYYY-MM-DD format. When set, billing periods are aligned to this date and monthly summaries start from this anchor."
         },
+        "aiBilling.vscodeDataPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional VS Code data directory override. Leave empty to use the current platform default (`~/Library/Application Support/Code` on macOS, `%APPDATA%/Code` on Windows, `~/.config/Code` on Linux). In WSL, set this to the Windows host path mounted in Linux, for example `/mnt/c/Users/<user>/AppData/Roaming/Code`. This directory must contain `User/workspaceStorage`."
+        },
         "aiBilling.diagnostics.enabled": {
           "type": "boolean",
           "default": false,

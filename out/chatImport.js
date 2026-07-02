@@ -41,7 +41,6 @@ exports.syncChatUsage = syncChatUsage;
 exports.getChatImportStats = getChatImportStats;
 exports.importDebugViewText = importDebugViewText;
 const fs = __importStar(require("node:fs/promises"));
-const os = __importStar(require("node:os"));
 const path = __importStar(require("node:path"));
 const vscode = __importStar(require("vscode"));
 const config_1 = require("./config");
@@ -1134,13 +1133,7 @@ function vscodeUserDir() {
     return path.join(vscodeAppRoot(), 'User');
 }
 function vscodeAppRoot() {
-    if (process.platform === 'darwin') {
-        return path.join(os.homedir(), 'Library', 'Application Support', 'Code');
-    }
-    if (process.platform === 'win32') {
-        return path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'Code');
-    }
-    return path.join(os.homedir(), '.config', 'Code');
+    return config_1.Config.vscodeDataPath();
 }
 async function safeReadDir(dirPath) {
     try {

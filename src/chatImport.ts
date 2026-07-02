@@ -1,6 +1,5 @@
 import * as fs from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { Config } from './config';
@@ -1336,13 +1335,7 @@ function vscodeUserDir(): string {
 }
 
 function vscodeAppRoot(): string {
-  if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Application Support', 'Code');
-  }
-  if (process.platform === 'win32') {
-    return path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'Code');
-  }
-  return path.join(os.homedir(), '.config', 'Code');
+  return Config.vscodeDataPath();
 }
 
 async function safeReadDir(dirPath: string): Promise<Dirent[]> {

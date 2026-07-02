@@ -34,6 +34,8 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Config = void 0;
+const os = __importStar(require("node:os"));
+const path = __importStar(require("node:path"));
 const vscode = __importStar(require("vscode"));
 function getNumber(key, fallback) {
     const raw = vscode.workspace.getConfiguration('aiBilling').get(key, fallback);
@@ -65,12 +67,41 @@ function billingLicenseStart() {
     const value = raw.trim();
     return value || undefined;
 }
+function defaultVscodeDataPath() {
+    if (process.platform === 'darwin') {
+        return path.join(os.homedir(), 'Library', 'Application Support', 'Code');
+    }
+    if (process.platform === 'win32') {
+        return path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'Code');
+    }
+    return path.join(os.homedir(), '.config', 'Code');
+}
+function normaliseConfiguredVscodeDataPath(value) {
+    if (process.platform !== 'linux') {
+        return value;
+    }
+    const windowsDrivePath = /^([a-zA-Z]):[\\/](.*)$/.exec(value);
+    if (!windowsDrivePath) {
+        return value;
+    }
+    const [, drive, rest] = windowsDrivePath;
+    return path.join('/mnt', drive.toLowerCase(), rest.replace(/[\\/]+/g, path.sep));
+}
+function vscodeDataPath() {
+    const raw = vscode.workspace.getConfiguration('aiBilling').get('vscodeDataPath', '');
+    if (typeof raw !== 'string') {
+        return defaultVscodeDataPath();
+    }
+    const value = raw.trim();
+    return value ? normaliseConfiguredVscodeDataPath(value) : defaultVscodeDataPath();
+}
 exports.Config = {
     includedCredits,
     creditPriceUsd,
     diagnosticsEnabled,
     billingPeriodStartDay,
     billingLicenseStart,
+    vscodeDataPath,
     copilotMonthlyIncludedRequests: includedCredits,
     copilotOverageUsdPerRequest: creditPriceUsd,
     copilotRequestUnitWeights() {
