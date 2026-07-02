@@ -430,7 +430,11 @@ async function doSyncChatUsage(syncId: string): Promise<void> {
 }
 
 async function readCopilotDebugUsageEntries(): Promise<DebugUsageEntry[]> {
-  const workspaceStorageDir = path.join(vscodeUserDir(), 'workspaceStorage');
+  const entries = await Promise.all(workspaceStorageDirs().map(readCopilotDebugUsageEntriesFromWorkspaceStorage));
+  return entries.flat();
+}
+
+async function readCopilotDebugUsageEntriesFromWorkspaceStorage(workspaceStorageDir: string): Promise<DebugUsageEntry[]> {
   const workspaceEntries = await safeReadDir(workspaceStorageDir);
   const entries: DebugUsageEntry[] = [];
 
@@ -740,7 +744,11 @@ function normaliseModelName(model: string): string {
  * The session ID is the filename without extension; timestamps come from request.timestamp.
  */
 async function readChatSessionCredits(): Promise<DebugUsageEntry[]> {
-  const workspaceStorageDir = path.join(vscodeUserDir(), 'workspaceStorage');
+  const entries = await Promise.all(workspaceStorageDirs().map(readChatSessionCreditsFromWorkspaceStorage));
+  return entries.flat();
+}
+
+async function readChatSessionCreditsFromWorkspaceStorage(workspaceStorageDir: string): Promise<DebugUsageEntry[]> {
   const workspaceEntries = await safeReadDir(workspaceStorageDir);
   const entries: DebugUsageEntry[] = [];
 
@@ -858,7 +866,11 @@ async function readChatSessionCredits(): Promise<DebugUsageEntry[]> {
 }
 
 async function findTranscriptFiles(): Promise<string[]> {
-  const workspaceStorageDir = path.join(vscodeUserDir(), 'workspaceStorage');
+  const files = await Promise.all(workspaceStorageDirs().map(findTranscriptFilesFromWorkspaceStorage));
+  return Array.from(new Set(files.flat()));
+}
+
+async function findTranscriptFilesFromWorkspaceStorage(workspaceStorageDir: string): Promise<string[]> {
   const workspaceEntries = await safeReadDir(workspaceStorageDir);
   const files: string[] = [];
 
@@ -999,7 +1011,12 @@ function extractDebugUsageTurnsFromText(content: string, ts: number, baseId: str
 }
 
 async function readCopilotRequestLogEntries(): Promise<RequestLogEntry[]> {
-  const logsRoot = path.join(vscodeAppRoot(), 'logs');
+  const entries = await Promise.all(vscodeAppRoots().map(readCopilotRequestLogEntriesFromAppRoot));
+  return entries.flat();
+}
+
+async function readCopilotRequestLogEntriesFromAppRoot(appRoot: string): Promise<RequestLogEntry[]> {
+  const logsRoot = path.join(appRoot, 'logs');
   const logRoots = (await safeReadDir(logsRoot))
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
@@ -1037,7 +1054,12 @@ async function readCopilotRequestLogEntries(): Promise<RequestLogEntry[]> {
 }
 
 async function readCopilotDebugViewUsageEntries(): Promise<DebugUsageEntry[]> {
-  const logsRoot = path.join(vscodeAppRoot(), 'logs');
+  const entries = await Promise.all(vscodeAppRoots().map(readCopilotDebugViewUsageEntriesFromAppRoot));
+  return entries.flat();
+}
+
+async function readCopilotDebugViewUsageEntriesFromAppRoot(appRoot: string): Promise<DebugUsageEntry[]> {
+  const logsRoot = path.join(appRoot, 'logs');
   const logRoots = (await safeReadDir(logsRoot))
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
@@ -1330,12 +1352,16 @@ function parseTimestamp(value: unknown): number {
   return Number.NaN;
 }
 
-function vscodeUserDir(): string {
-  return path.join(vscodeAppRoot(), 'User');
+function vscodeUserDirs(): string[] {
+  return vscodeAppRoots().map((appRoot) => path.join(appRoot, 'User'));
 }
 
-function vscodeAppRoot(): string {
-  return Config.vscodeDataPath();
+function workspaceStorageDirs(): string[] {
+  return vscodeUserDirs().map((userDir) => path.join(userDir, 'workspaceStorage'));
+}
+
+function vscodeAppRoots(): string[] {
+  return Config.vscodeDataPaths();
 }
 
 async function safeReadDir(dirPath: string): Promise<Dirent[]> {

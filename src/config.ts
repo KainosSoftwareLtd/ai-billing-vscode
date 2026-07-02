@@ -75,6 +75,20 @@ function vscodeDataPath(): string {
   return value ? normaliseConfiguredVscodeDataPath(value) : defaultVscodeDataPath();
 }
 
+function vscodeDataPaths(): string[] {
+  const rawAdditional = vscode.workspace.getConfiguration('aiBilling').get<unknown>('additionalVscodeDataPaths', []);
+  const additional = Array.isArray(rawAdditional)
+    ? rawAdditional.filter((value): value is string => typeof value === 'string')
+    : [];
+
+  const paths = [vscodeDataPath(), ...additional]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map(normaliseConfiguredVscodeDataPath);
+
+  return Array.from(new Set(paths));
+}
+
 export const Config = {
   includedCredits,
   creditPriceUsd,
@@ -82,6 +96,7 @@ export const Config = {
   billingPeriodStartDay,
   billingLicenseStart,
   vscodeDataPath,
+  vscodeDataPaths,
   copilotMonthlyIncludedRequests: includedCredits,
   copilotOverageUsdPerRequest: creditPriceUsd,
 

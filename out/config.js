@@ -80,6 +80,8 @@ function normaliseConfiguredVscodeDataPath(value) {
     if (process.platform !== 'linux') {
         return value;
     }
+    // For WSL accept the Windows path and convert it to the Linux mount point path.
+    // This is useful for users who have their VS Code data on a Windows drive and want to use it from WSL.
     const windowsDrivePath = /^([a-zA-Z]):[\\/](.*)$/.exec(value);
     if (!windowsDrivePath) {
         return value;
@@ -95,6 +97,17 @@ function vscodeDataPath() {
     const value = raw.trim();
     return value ? normaliseConfiguredVscodeDataPath(value) : defaultVscodeDataPath();
 }
+function vscodeDataPaths() {
+    const rawAdditional = vscode.workspace.getConfiguration('aiBilling').get('additionalVscodeDataPaths', []);
+    const additional = Array.isArray(rawAdditional)
+        ? rawAdditional.filter((value) => typeof value === 'string')
+        : [];
+    const paths = [vscodeDataPath(), ...additional]
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map(normaliseConfiguredVscodeDataPath);
+    return Array.from(new Set(paths));
+}
 exports.Config = {
     includedCredits,
     creditPriceUsd,
@@ -102,6 +115,7 @@ exports.Config = {
     billingPeriodStartDay,
     billingLicenseStart,
     vscodeDataPath,
+    vscodeDataPaths,
     copilotMonthlyIncludedRequests: includedCredits,
     copilotOverageUsdPerRequest: creditPriceUsd,
     copilotRequestUnitWeights() {
