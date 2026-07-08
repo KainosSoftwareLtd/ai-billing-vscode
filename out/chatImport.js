@@ -41,7 +41,6 @@ exports.syncChatUsage = syncChatUsage;
 exports.getChatImportStats = getChatImportStats;
 exports.importDebugViewText = importDebugViewText;
 const fs = __importStar(require("node:fs/promises"));
-const os = __importStar(require("node:os"));
 const path = __importStar(require("node:path"));
 const vscode = __importStar(require("vscode"));
 const config_1 = require("./config");
@@ -365,7 +364,10 @@ async function doSyncChatUsage(syncId) {
     }, syncId);
 }
 async function readCopilotDebugUsageEntries() {
-    const workspaceStorageDir = path.join(vscodeUserDir(), 'workspaceStorage');
+    const entries = await Promise.all(workspaceStorageDirs().map(readCopilotDebugUsageEntriesFromWorkspaceStorage));
+    return entries.flat();
+}
+async function readCopilotDebugUsageEntriesFromWorkspaceStorage(workspaceStorageDir) {
     const workspaceEntries = await safeReadDir(workspaceStorageDir);
     const entries = [];
     for (const wsEntry of workspaceEntries) {
@@ -631,7 +633,10 @@ function normaliseModelName(model) {
  * The session ID is the filename without extension; timestamps come from request.timestamp.
  */
 async function readChatSessionCredits() {
-    const workspaceStorageDir = path.join(vscodeUserDir(), 'workspaceStorage');
+    const entries = await Promise.all(workspaceStorageDirs().map(readChatSessionCreditsFromWorkspaceStorage));
+    return entries.flat();
+}
+async function readChatSessionCreditsFromWorkspaceStorage(workspaceStorageDir) {
     const workspaceEntries = await safeReadDir(workspaceStorageDir);
     const entries = [];
     for (const wsEntry of workspaceEntries) {
@@ -737,7 +742,10 @@ async function readChatSessionCredits() {
     return entries;
 }
 async function findTranscriptFiles() {
-    const workspaceStorageDir = path.join(vscodeUserDir(), 'workspaceStorage');
+    const files = await Promise.all(workspaceStorageDirs().map(findTranscriptFilesFromWorkspaceStorage));
+    return Array.from(new Set(files.flat()));
+}
+async function findTranscriptFilesFromWorkspaceStorage(workspaceStorageDir) {
     const workspaceEntries = await safeReadDir(workspaceStorageDir);
     const files = [];
     for (const entry of workspaceEntries) {
@@ -858,7 +866,11 @@ function extractDebugUsageTurnsFromText(content, ts, baseId) {
     return turns;
 }
 async function readCopilotRequestLogEntries() {
-    const logsRoot = path.join(vscodeAppRoot(), 'logs');
+    const entries = await Promise.all(vscodeAppRoots().map(readCopilotRequestLogEntriesFromAppRoot));
+    return entries.flat();
+}
+async function readCopilotRequestLogEntriesFromAppRoot(appRoot) {
+    const logsRoot = path.join(appRoot, 'logs');
     const logRoots = (await safeReadDir(logsRoot))
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name)
@@ -883,7 +895,11 @@ async function readCopilotRequestLogEntries() {
     return allEntries;
 }
 async function readCopilotDebugViewUsageEntries() {
-    const logsRoot = path.join(vscodeAppRoot(), 'logs');
+    const entries = await Promise.all(vscodeAppRoots().map(readCopilotDebugViewUsageEntriesFromAppRoot));
+    return entries.flat();
+}
+async function readCopilotDebugViewUsageEntriesFromAppRoot(appRoot) {
+    const logsRoot = path.join(appRoot, 'logs');
     const logRoots = (await safeReadDir(logsRoot))
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name)
@@ -1130,17 +1146,14 @@ function parseTimestamp(value) {
     }
     return Number.NaN;
 }
-function vscodeUserDir() {
-    return path.join(vscodeAppRoot(), 'User');
+function vscodeUserDirs() {
+    return vscodeAppRoots().map((appRoot) => path.join(appRoot, 'User'));
 }
-function vscodeAppRoot() {
-    if (process.platform === 'darwin') {
-        return path.join(os.homedir(), 'Library', 'Application Support', 'Code');
-    }
-    if (process.platform === 'win32') {
-        return path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'Code');
-    }
-    return path.join(os.homedir(), '.config', 'Code');
+function workspaceStorageDirs() {
+    return vscodeUserDirs().map((userDir) => path.join(userDir, 'workspaceStorage'));
+}
+function vscodeAppRoots() {
+    return config_1.Config.vscodeDataPaths();
 }
 async function safeReadDir(dirPath) {
     try {

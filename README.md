@@ -70,6 +70,11 @@ Billing period behaviour is controlled by:
 - `aiBilling.billing.periodStartDay`: cycle start day when no explicit license anchor is configured
 - `aiBilling.billing.licenseStart`: optional `YYYY-MM-DD` anchor for license-aligned cycles and monthly summary grouping
 
+Local VS Code data discovery is controlled by:
+
+- `aiBilling.vscodeDataPath`: optional VS Code data directory override. Leave empty to use the platform default. The path should contain `User/workspaceStorage`, not point directly at `workspaceStorage` or `chatSessions`. Windows-style paths such as `C:\Users\{userName}\AppData\Roaming\Code` are automatically converted to `/mnt/c/...` when running in WSL.
+- `aiBilling.additionalVscodeDataPaths`: optional list of extra VS Code data directories to scan. This is useful for Remote-WSL, where recent transcripts and debug logs may live under `~/.vscode-server/data` while credit-bearing chat sessions live under the Windows host Code directory. In that case, set `aiBilling.vscodeDataPath` to `~/.vscode-server/data` and add `/mnt/c/Users/{userName}/AppData/Roaming/Code` here.
+
 ## Documentation
 
 This README is the repository entry point. Use the documents below for detailed guidance.

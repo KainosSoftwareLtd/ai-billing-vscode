@@ -1,3 +1,5 @@
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 function getNumber(key: string, fallback: number): number {
@@ -37,12 +39,64 @@ function billingLicenseStart(): string | undefined {
   return value || undefined;
 }
 
+function defaultVscodeDataPath(): string {
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'Code');
+  }
+  if (process.platform === 'win32') {
+    return path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'Code');
+  }
+  return path.join(os.homedir(), '.config', 'Code');
+}
+
+function normaliseConfiguredVscodeDataPath(value: string): string {
+  if (process.platform !== 'linux') {
+    return value;
+  }
+
+  // For WSL accept the Windows path and convert it to the Linux mount point path.
+  // This is useful for users who have their VS Code data on a Windows drive and want to use it from WSL.
+  const windowsDrivePath = /^([a-zA-Z]):[\\/](.*)$/.exec(value);
+  if (!windowsDrivePath) {
+    return value;
+  }
+
+  const [, drive, rest] = windowsDrivePath;
+  return path.join('/mnt', drive.toLowerCase(), rest.replace(/[\\/]+/g, path.sep));
+}
+
+function vscodeDataPath(): string {
+  const raw = vscode.workspace.getConfiguration('aiBilling').get<unknown>('vscodeDataPath', '');
+  if (typeof raw !== 'string') {
+    return defaultVscodeDataPath();
+  }
+
+  const value = raw.trim();
+  return value ? normaliseConfiguredVscodeDataPath(value) : defaultVscodeDataPath();
+}
+
+function vscodeDataPaths(): string[] {
+  const rawAdditional = vscode.workspace.getConfiguration('aiBilling').get<unknown>('additionalVscodeDataPaths', []);
+  const additional = Array.isArray(rawAdditional)
+    ? rawAdditional.filter((value): value is string => typeof value === 'string')
+    : [];
+
+  const paths = [vscodeDataPath(), ...additional]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map(normaliseConfiguredVscodeDataPath);
+
+  return Array.from(new Set(paths));
+}
+
 export const Config = {
   includedCredits,
   creditPriceUsd,
   diagnosticsEnabled,
   billingPeriodStartDay,
   billingLicenseStart,
+  vscodeDataPath,
+  vscodeDataPaths,
   copilotMonthlyIncludedRequests: includedCredits,
   copilotOverageUsdPerRequest: creditPriceUsd,
 

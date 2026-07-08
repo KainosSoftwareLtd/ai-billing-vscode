@@ -139,6 +139,19 @@
           "pattern": "^$|^\\d{4}-\\d{2}-\\d{2}$",
           "markdownDescription": "Optional license anchor date in YYYY-MM-DD format. When set, billing periods are aligned to this date and monthly summaries start from this anchor."
         },
+        "aiBilling.vscodeDataPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional VS Code data directory override. Leave empty to use the current platform default (`~/Library/Application Support/Code` on macOS, `%APPDATA%/Code` on Windows, `~/.config/Code` on Linux). This directory must contain `User/workspaceStorage`. Windows-style paths are converted to `/mnt/<drive>/...` when running in WSL."
+        },
+        "aiBilling.additionalVscodeDataPaths": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Additional VS Code data directories to scan alongside `aiBilling.vscodeDataPath`. Use this when VS Code stores Copilot artifacts in different roots, such as Remote-WSL transcripts under `~/.vscode-server/data` and Windows chat sessions under `%APPDATA%/Code`. Each directory must contain a `User` folder or a `logs` folder."
+        },
         "aiBilling.diagnostics.enabled": {
           "type": "boolean",
           "default": false,

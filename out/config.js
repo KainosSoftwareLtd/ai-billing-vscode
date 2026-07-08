@@ -34,6 +34,8 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Config = void 0;
+const os = __importStar(require("node:os"));
+const path = __importStar(require("node:path"));
 const vscode = __importStar(require("vscode"));
 function getNumber(key, fallback) {
     const raw = vscode.workspace.getConfiguration('aiBilling').get(key, fallback);
@@ -65,12 +67,55 @@ function billingLicenseStart() {
     const value = raw.trim();
     return value || undefined;
 }
+function defaultVscodeDataPath() {
+    if (process.platform === 'darwin') {
+        return path.join(os.homedir(), 'Library', 'Application Support', 'Code');
+    }
+    if (process.platform === 'win32') {
+        return path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'Code');
+    }
+    return path.join(os.homedir(), '.config', 'Code');
+}
+function normaliseConfiguredVscodeDataPath(value) {
+    if (process.platform !== 'linux') {
+        return value;
+    }
+    // For WSL accept the Windows path and convert it to the Linux mount point path.
+    // This is useful for users who have their VS Code data on a Windows drive and want to use it from WSL.
+    const windowsDrivePath = /^([a-zA-Z]):[\\/](.*)$/.exec(value);
+    if (!windowsDrivePath) {
+        return value;
+    }
+    const [, drive, rest] = windowsDrivePath;
+    return path.join('/mnt', drive.toLowerCase(), rest.replace(/[\\/]+/g, path.sep));
+}
+function vscodeDataPath() {
+    const raw = vscode.workspace.getConfiguration('aiBilling').get('vscodeDataPath', '');
+    if (typeof raw !== 'string') {
+        return defaultVscodeDataPath();
+    }
+    const value = raw.trim();
+    return value ? normaliseConfiguredVscodeDataPath(value) : defaultVscodeDataPath();
+}
+function vscodeDataPaths() {
+    const rawAdditional = vscode.workspace.getConfiguration('aiBilling').get('additionalVscodeDataPaths', []);
+    const additional = Array.isArray(rawAdditional)
+        ? rawAdditional.filter((value) => typeof value === 'string')
+        : [];
+    const paths = [vscodeDataPath(), ...additional]
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map(normaliseConfiguredVscodeDataPath);
+    return Array.from(new Set(paths));
+}
 exports.Config = {
     includedCredits,
     creditPriceUsd,
     diagnosticsEnabled,
     billingPeriodStartDay,
     billingLicenseStart,
+    vscodeDataPath,
+    vscodeDataPaths,
     copilotMonthlyIncludedRequests: includedCredits,
     copilotOverageUsdPerRequest: creditPriceUsd,
     copilotRequestUnitWeights() {
